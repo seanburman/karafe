@@ -3,23 +3,66 @@ package store
 
 import (
 	"fmt"
+	"log"
 	"sync"
+
+	"github.com/seanburman/kaw/cmd/api"
 )
+
+const serverStoreCache StoreKey = "server_store_cache"
+
+var serverStore = NewStore("server_store")
+
+func init() {
+	_, err := CreateStoreCache[api.Server](serverStore, serverStoreCache)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 
 type (
 	Store struct {
 		mu   sync.Mutex
+		name string
 		data map[interface{}]interface{}
 		keys []StoreKey
 	}
-	StoreKey int
+	StoreKey string
 )
 
-func NewStore() *Store {
-	s := &Store{
+func NewStore(name string) *Store {
+	return &Store{
+		name: name,
 		data: make(map[interface{}]interface{}),
 	}
-	return s
+}
+
+func (s *Store) Serve(port int, path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cache, err := UseStoreCache[api.Server](serverStore, serverStoreCache)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, cs := range cache.All() {
+		if cs.Data.Port == port {
+			return fmt.Errorf("port %v already taken with path %v", port, cs.Data.Path)
+		}
+	}
+
+	server, err := api.NewServer(api.ServerConfig{
+		Port: port,
+		Path: path,
+	})
+	if err != nil {
+		return err
+	}
+
+	if err = cache.Save(server, s.name); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Store) Keys() []StoreKey {

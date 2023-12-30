@@ -11,7 +11,7 @@ func Example() {
 }
 
 func TestNewStore(t *testing.T) {
-	store := NewStore()
+	store := NewStore("test")
 	storeType := reflect.TypeOf(store)
 	expected := "*store.Store"
 	actual := storeType.String()
@@ -25,20 +25,20 @@ func TestNewStore(t *testing.T) {
 }
 
 func TestKeys(t *testing.T) {
-	store := NewStore()
-	key := 0
+	store := NewStore("test")
+	key := "test"
 	_, err := CreateStoreCache[int](store, StoreKey(key))
 	if err != nil {
 		t.Error(err)
 	}
 	keys := store.Keys()
-	if keys[0] != 0 {
+	if keys[0] != "test" {
 		t.Error("expected keys to contain new CacheKey")
 	}
 }
 
 func TestCreateStoreCache(t *testing.T) {
-	store := NewStore()
+	store := NewStore("test")
 	key := 0
 	_, err := CreateStoreCache[int](store, StoreKey(key))
 	if err != nil {
@@ -51,7 +51,7 @@ func TestCreateStoreCache(t *testing.T) {
 }
 
 func TestUseStoreCache(t *testing.T) {
-	store := NewStore()
+	store := NewStore("test")
 	key := 0
 	cache, err := CreateStoreCache[int](store, StoreKey(key))
 	if err != nil {
