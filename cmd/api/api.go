@@ -55,6 +55,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 }
 
 func (s *Server) ListenAndServe() {
+	s.ServeMux.Handle("/", http.FileServer(http.Dir("./build")))
 	s.applyMiddleware()
 	CORS := cors.Default().Handler(s.ServeMux)
 	srv := &http.Server{

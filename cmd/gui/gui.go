@@ -41,9 +41,8 @@ func ListenKeyBoard(callback func(string)) {
 }
 
 func ListenCommands() {
-	// commands := make(map[string]func())
 	commands := map[string]func(){
-		"w": func() { OpenURL("http://localhost:8080/store") },
+		"w": func() { OpenURL("http://localhost:8080") },
 		"d": func() { OpenDesktop() },
 	}
 

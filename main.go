@@ -6,7 +6,7 @@ import (
 
 func main() {
 	finish := make(chan bool)
-	store.Kaw(false, false)
+	store.Kaw()
 
 	<-finish
 }

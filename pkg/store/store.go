@@ -3,7 +3,6 @@ package store
 
 import (
 	"fmt"
-	"os/exec"
 	"sync"
 
 	"github.com/labstack/gommon/log"
@@ -41,16 +40,9 @@ type (
 	StoreKey string
 )
 
-func Kaw(web bool, desktop bool) {
-	if desktop {
-		fmt.Println(`𓅩 KAW! Opening GUI`)
-		cmnd := exec.Command("cmd/kaw")
-		cmnd.Start()
-	}
-	if web {
-		gui.OpenURL("http://localhost:8080/store")
-	}
-	go gui.ListenCommands()
+func Kaw() {
+	fmt.Println(`𓅩 KAW! Kaching At Will`)
+	gui.ListenCommands()
 }
 
 func NewStore(name string) *Store {
