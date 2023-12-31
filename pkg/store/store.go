@@ -3,10 +3,13 @@ package store
 
 import (
 	"fmt"
-	"log"
+	"os/exec"
 	"sync"
 
+	"github.com/labstack/gommon/log"
 	"github.com/seanburman/kaw/cmd/api"
+	"github.com/seanburman/kaw/cmd/gui"
+	"github.com/seanburman/kaw/handlers"
 )
 
 const serverStoreCache StoreKey = "server_store_cache"
@@ -14,10 +17,18 @@ const serverStoreCache StoreKey = "server_store_cache"
 var serverStore = NewStore("server_store")
 
 func init() {
-	_, err := CreateStoreCache[api.Server](serverStore, serverStoreCache)
+	cache, err := CreateStoreCache[api.Server](serverStore, serverStoreCache)
 	if err != nil {
 		log.Fatal(err)
 	}
+	cache.SetSerializer(func(cfg SerializerConfig[api.Server]) []byte {
+		for _, server := range cfg.Data {
+			fmt.Printf("Caching store %s\n", server.Key)
+		}
+		return []byte{}
+	})
+
+	serverStore.Serve(":8080", "/store")
 }
 
 type (
@@ -30,6 +41,18 @@ type (
 	StoreKey string
 )
 
+func Kaw(web bool, desktop bool) {
+	if desktop {
+		fmt.Println(`𓅩 KAW! Opening GUI`)
+		cmnd := exec.Command("cmd/kaw")
+		cmnd.Start()
+	}
+	if web {
+		gui.OpenURL("http://localhost:8080/store")
+	}
+	go gui.ListenCommands()
+}
+
 func NewStore(name string) *Store {
 	return &Store{
 		name: name,
@@ -38,16 +61,14 @@ func NewStore(name string) *Store {
 }
 
 func (s *Store) Serve(port string, path string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
-	cache, err := UseStoreCache[api.Server](serverStore, serverStoreCache)
+	caches, err := UseStoreCache[api.Server](serverStore, serverStoreCache)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, cs := range cache.All() {
-		if cs.Data.Config.Port == port {
-			return fmt.Errorf("port %v already taken with path %v", port, cs.Data.Config.Path)
+	for _, cache := range caches.All() {
+		if cache.Data.Config.Port == port {
+			return fmt.Errorf("port %v already taken with path %v", port, cache.Data.Config.Path)
 		}
 	}
 
@@ -59,9 +80,16 @@ func (s *Store) Serve(port string, path string) error {
 		return err
 	}
 
-	if err = cache.Save(server, s.name); err != nil {
+	wsRoute := api.NewRoute("/ws")
+	wsRoute.HandleFunc("", handlers.HandleGetWebSocket)
+
+	server.UseRoute(wsRoute)
+
+	if err = caches.Save(server, s.name); err != nil {
 		return err
 	}
+
+	server.ListenAndServe()
 	return nil
 }
 

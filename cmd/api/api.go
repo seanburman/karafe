@@ -24,12 +24,12 @@ type (
 	Route struct {
 		Path       string
 		middleware []func(http.Handler) http.Handler
-		Handler    http.HandlerFunc
+		Handler    func(http.ResponseWriter, *http.Request)
 	}
 	ServerConfig struct {
 		Port   string
 		Path   string
-		Routes []Route
+		Routes []*Route
 	}
 )
 
@@ -55,14 +55,14 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 }
 
 func (s *Server) ListenAndServe() {
-	s.ApplyMiddleware()
+	s.applyMiddleware()
 	CORS := cors.Default().Handler(s.ServeMux)
 	srv := &http.Server{
 		Addr:    "localhost" + s.Config.Port,
 		Handler: CORS,
 	}
 	s.shutdown = srv.Shutdown
-	log.Infof("serving http://%s/%s", srv.Addr, s.Config.Path)
+	log.Infof("serving http://%s%s", srv.Addr, s.Config.Path)
 	go srv.ListenAndServe()
 }
 
@@ -73,29 +73,41 @@ func (s *Server) Shutdown() {
 	}
 }
 
+func (s *Server) UseRoute(r *Route) {
+	s.Config.Routes = append(s.Config.Routes, r)
+}
+
 func (s *Server) UseMiddleware(middleware func(http.Handler) http.Handler) {
 	mw := []func(http.Handler) http.Handler{middleware}
 	mw = append(mw, middleware)
 	s.middleware = mw
 }
 
-func (s *Server) ApplyMiddleware() {
+func (s *Server) applyMiddleware() {
 	for _, route := range s.Config.Routes {
 		var handler http.Handler
 		for k, middleware := range route.middleware {
 			if k == 0 {
 				handler = http.HandlerFunc(route.Handler)
+				continue
 			}
 			handler = middleware(handler)
 		}
 		for _, middleware := range s.middleware {
 			handler = middleware(handler)
 		}
+		if len(route.middleware) == 0 && len(s.middleware) == 0 {
+			handler = http.HandlerFunc(route.Handler)
+		}
 		s.ServeMux.Handle(s.Config.Path+route.Path, handler)
 	}
 }
 
-func (r *Route) Handle(path string, handler http.HandlerFunc) {
+func NewRoute(path string) *Route {
+	return &Route{}
+}
+
+func (r *Route) HandleFunc(path string, handler http.HandlerFunc) {
 	r.Path = path
 	r.Handler = handler
 }

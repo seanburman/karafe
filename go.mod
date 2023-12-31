@@ -4,6 +4,8 @@ go 1.21.5
 
 require github.com/labstack/gommon v0.4.2
 
+require azul3d.org/engine v0.0.0-20211024043305-793ea6c2839d // indirect
+
 require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
