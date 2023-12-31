@@ -37,7 +37,7 @@ func NewStore(name string) *Store {
 	}
 }
 
-func (s *Store) Serve(port int, path string) error {
+func (s *Store) Serve(port string, path string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -46,8 +46,8 @@ func (s *Store) Serve(port int, path string) error {
 		log.Fatal(err)
 	}
 	for _, cs := range cache.All() {
-		if cs.Data.Port == port {
-			return fmt.Errorf("port %v already taken with path %v", port, cs.Data.Path)
+		if cs.Data.Config.Port == port {
+			return fmt.Errorf("port %v already taken with path %v", port, cs.Data.Config.Path)
 		}
 	}
 

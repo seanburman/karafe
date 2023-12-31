@@ -1,68 +1,107 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/labstack/gommon/log"
+	"github.com/rs/cors"
 )
 
-var servers = make(map[int]*Server)
+var servers = make(map[string]*Server)
 
 type (
 	Server struct {
-		http *http.Server
-		Port int
-		Path string
+		//TODO:
+		// connections map[*websocket.Conn]true
+		Config ServerConfig
+		*http.ServeMux
+		Ctx        context.Context
+		middleware []func(http.Handler) http.Handler
+		shutdown   func(context.Context) error
+	}
+	Route struct {
+		Path       string
+		middleware []func(http.Handler) http.Handler
+		Handler    http.HandlerFunc
 	}
 	ServerConfig struct {
-		Port       int
-		Path       string
-		Middleware []http.HandlerFunc
-		Group      func(*http.ServeMux, ServerConfig) error
+		Port   string
+		Path   string
+		Routes []Route
 	}
 )
 
 func NewServer(cfg ServerConfig) (*Server, error) {
 	for port, sv := range servers {
 		if port == cfg.Port {
-			return nil, fmt.Errorf("server with port %d already exists", cfg.Port)
+			return nil, fmt.Errorf("server with port %s already exists", cfg.Port)
 		}
-		if sv.Path == cfg.Path {
+		if sv.Config.Path == cfg.Path {
 			return nil, fmt.Errorf("server with path %s already exists", cfg.Path)
 		}
 	}
 
-	var addr string
-	if cfg.Port <= 0 {
-		addr = ":8080"
-	} else {
-		addr = fmt.Sprint(":", cfg.Port)
+	server := &Server{
+		ServeMux: http.NewServeMux(),
+		Config:   cfg,
+		Ctx:      context.Background(),
 	}
 
-	mux := http.NewServeMux()
+	servers[server.Config.Port] = server
 
-	server := http.Server{
-		Addr:    "localhost" + addr,
-		Handler: mux,
-	}
-
-	ss := &Server{
-		&server,
-		cfg.Port,
-		cfg.Path,
-	}
-
-	go func() {
-		log.Infof("serving http://%d/%s", cfg.Path, server.Addr)
-		server.ListenAndServe()
-	}()
-	servers[ss.Port] = ss
-
-	return ss, nil
+	return server, nil
 }
 
-func (s *Server) Close() error {
-	delete(servers, s.Port)
-	return s.http.Close()
+func (s *Server) ListenAndServe() {
+	s.ApplyMiddleware()
+	CORS := cors.Default().Handler(s.ServeMux)
+	srv := &http.Server{
+		Addr:    "localhost" + s.Config.Port,
+		Handler: CORS,
+	}
+	s.shutdown = srv.Shutdown
+	log.Infof("serving http://%s/%s", srv.Addr, s.Config.Path)
+	go srv.ListenAndServe()
+}
+
+func (s *Server) Shutdown() {
+	err := s.shutdown(s.Ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (s *Server) UseMiddleware(middleware func(http.Handler) http.Handler) {
+	mw := []func(http.Handler) http.Handler{middleware}
+	mw = append(mw, middleware)
+	s.middleware = mw
+}
+
+func (s *Server) ApplyMiddleware() {
+	for _, route := range s.Config.Routes {
+		var handler http.Handler
+		for k, middleware := range route.middleware {
+			if k == 0 {
+				handler = http.HandlerFunc(route.Handler)
+			}
+			handler = middleware(handler)
+		}
+		for _, middleware := range s.middleware {
+			handler = middleware(handler)
+		}
+		s.ServeMux.Handle(s.Config.Path+route.Path, handler)
+	}
+}
+
+func (r *Route) Handle(path string, handler http.HandlerFunc) {
+	r.Path = path
+	r.Handler = handler
+}
+
+func (r *Route) UseMiddleware(middleware func(http.Handler) http.Handler) {
+	mw := []func(http.Handler) http.Handler{middleware}
+	mw = append(mw, middleware)
+	r.middleware = mw
 }
