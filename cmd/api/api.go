@@ -55,6 +55,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 }
 
 func (s *Server) ListenAndServe() {
+	// build, _ := fs.Sub(build, "build")
+	// s.ServeMux.Handle("/", http.FileServer(http.FS(build)))
 	s.ServeMux.Handle("/", http.FileServer(http.Dir("./build")))
 	s.applyMiddleware()
 	CORS := cors.Default().Handler(s.ServeMux)
@@ -63,7 +65,7 @@ func (s *Server) ListenAndServe() {
 		Handler: CORS,
 	}
 	s.shutdown = srv.Shutdown
-	log.Infof("serving http://%s%s", srv.Addr, s.Config.Path)
+	log.Printf("serving http://%s%s", srv.Addr, s.Config.Path)
 	go srv.ListenAndServe()
 }
 
