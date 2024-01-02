@@ -41,7 +41,6 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			return nil, fmt.Errorf("server with path %s already exists", cfg.Path)
 		}
 	}
-	manager.mu.Unlock()
 
 	server := &Server{
 		fiber.New(fiber.Config{
@@ -49,11 +48,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		}),
 		cfg,
 	}
-	manager.mu.Lock()
+
 	manager.servers[server.Port] = server
 	manager.mu.Unlock()
 
-	server.app.Static("", "dist")
+	server.app.Static("", "public")
 	server.app.Route(cfg.Path, func(api fiber.Router) {
 		api.Get("/ws", handlers.HandleGetWebSocket)
 	})

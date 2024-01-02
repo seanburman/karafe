@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	//go:embed dist
+	//go:embed public
 	_ embed.FS
 )
 

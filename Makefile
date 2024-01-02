@@ -16,7 +16,7 @@ build_client:
 	sudo rm -rf build && \
 	cd client && \
 	npm run build && \
-	cp dist/assets/* ../dist/assets && \
+	cp dist/* ../public \
 	cd ..
 
 build_all: build_client build_bin
