@@ -1,24 +1,11 @@
 import { createContext, useCallback, useContext, useState } from "react";
 import { useThemeFonts, fonts } from "../theme/fonts";
-
-export const ThemeColors = {
-    dark: {
-        background: "#393E46",
-        primary: "#F96D00",
-        secondary: "#F2F2F2",
-        tertiary: "#5C636E"
-    },
-    light: {
-        background: "#393E46",
-        primary: "#F96D00",
-        secondary: "#F2F2F2",
-        tertiary: "#5C636E"
-    }
-}
+import { ThemeColors } from "../theme/colors";
 
 export enum ThemeType {
     dark = "dark",
     light = "light",
+    spooky = "spooky"
 }
 
 type ThemeContextData = {
@@ -38,7 +25,7 @@ export function ThemeProvider({ children }: React.PropsWithChildren) {
     const fontsLoaded = useThemeFonts()
     console.log(fontsLoaded)
     
-    const colors = themeType === ThemeType.dark ? ThemeColors.dark : ThemeColors.light
+    const colors = themeType === ThemeType.dark ? ThemeColors.dark : ThemeColors.spooky
 
     const themeContextValue: ThemeContextState = {
         fonts,
