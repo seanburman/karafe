@@ -2,9 +2,10 @@ import "react-native-gesture-handler";
 import React, { StyleSheet, View, useWindowDimensions } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createDrawerNavigator } from "@react-navigation/drawer";
-import Home from "./screens/Home";
 import Menu from "./components/Menu";
 import { ThemeProvider } from "./context/theme";
+import Stores from "./screens/Stores";
+import Documentation from "./screens/Documentation";
 
 const Drawer = createDrawerNavigator();
 export default function App() {
@@ -30,7 +31,8 @@ export default function App() {
                                 },
                             }}
                         >
-                            <Drawer.Screen name="Stores" component={Home} />
+                            <Drawer.Screen name="Stores" component={Stores} />
+                            <Drawer.Screen name="Documentation" component={Documentation} />
                         </Drawer.Navigator>
                     </NavigationContainer>
                 </View>

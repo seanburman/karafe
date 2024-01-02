@@ -1,27 +1,26 @@
-import { StyleSheet, Text, View } from "react-native";
+import { PropsWithChildren } from "react";
+import { StyleSheet, View } from "react-native";
 import { useTheme } from "../context/theme";
 
-export default function Home() {
-    const theme = useTheme();
-
+export default function ScreenContainer ({ children }: PropsWithChildren){
+    const theme = useTheme()
     return (
         <View
             style={[
                 styles.container,
                 {
-                    backgroundColor: theme.colors.background,
+                    backgroundColor: theme.colors.background
                 },
             ]}
         >
-            <Text>Home</Text>
+            {children}
         </View>
     );
-}
+};
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#fff",
         alignItems: "center",
         justifyContent: "center",
     },

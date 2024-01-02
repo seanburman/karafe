@@ -14,9 +14,9 @@ export default function Menu(props: DrawerContentComponentProps) {
     const [index, setIndex] = useState(0);
     const { colors } = useTheme();
 
-    function handleSelection(path: IndexPath) {
-        setIndex(path.row);
-        props.navigation.navigate(routes[path.row]);
+    function handleSelection(index: number) {
+        setIndex(index);
+        props.navigation.navigate(routes[index]);
     }
 
     return (
@@ -30,6 +30,7 @@ export default function Menu(props: DrawerContentComponentProps) {
             </View>
             {routes.map((route, i) => (
                 <Pressable
+                onPress={() => handleSelection(i)}
                     style={[
                         styles.menuItemWrapper,
                         index === i
