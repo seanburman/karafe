@@ -5,27 +5,41 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "react-scripts build",
+    "start": "react-scripts start"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "@babel/preset-typescript": "^7.23.3",
+    "@babel/runtime": "^7.23.7",
     "@vitejs/plugin-react": "^4.2.1",
+    "native-base": "^3.4.28",
+    "normalize-css-color": "^1.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-native": "^0.73.1",
+    "react-native-dotenv": "^3.4.9",
+    "react-native-paper": "^4.12.6",
+    "react-native-safe-area-context": "^3.3.2",
+    "react-native-svg": "^12.1.1",
+    "react-native-vector-icons": "^10.0.3",
     "react-native-web": "^0.19.10",
     "vite": "^5.0.10"
   },
   "devDependencies": {
+    "@babel/cli": "^7.23.4",
+    "@babel/core": "^7.23.7",
+    "@babel/preset-env": "^7.23.7",
+    "@babel/preset-react": "^7.23.3",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
     "@types/react-native": "^0.73.0",
     "esbuild": "^0.19.11",
     "esbuild-sass-plugin": "^2.16.1",
+    "metro-react-native-babel-preset": "^0.77.0",
     "react-scripts": "^5.0.1"
   },
   "browserslist": {
