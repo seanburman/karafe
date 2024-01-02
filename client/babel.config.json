@@ -8,7 +8,11 @@
         }
       }
     ],
+    "@babel/preset-react",
     "@babel/preset-typescript"
   ],
-  "plugins": ["@babel/plugin-proposal-private-property-in-object"]
+  "plugins": [
+    "@babel/plugin-proposal-private-property-in-object",
+    "react-native-reanimated/plugin"
+  ]
 }
