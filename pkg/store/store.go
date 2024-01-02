@@ -3,12 +3,13 @@ package store
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 
 	"github.com/labstack/gommon/log"
 	"github.com/seanburman/kaw/cmd/api"
 	"github.com/seanburman/kaw/cmd/gui"
-	"github.com/seanburman/kaw/handlers"
 )
 
 const serverStoreCache StoreKey = "server_store_cache"
@@ -27,13 +28,17 @@ func init() {
 		return []byte{}
 	})
 
-	serverStore.Serve(":8080", "/store")
+	port := os.Getenv("KAW_PORT")
+	if port == "" {
+		port = ":8080"
+	}
+	serverStore.Serve(port, "/store")
 }
 
 type (
 	Store struct {
 		mu   sync.Mutex
-		name string
+		key  string
 		data map[interface{}]interface{}
 		keys []StoreKey
 	}
@@ -45,26 +50,28 @@ func Kaw() {
 	gui.ListenCommands()
 }
 
-func NewStore(name string) *Store {
+func NewStore(key string) *Store {
 	return &Store{
-		name: name,
+		key:  key,
 		data: make(map[interface{}]interface{}),
 	}
 }
 
 func (s *Store) Serve(port string, path string) error {
+	path = strings.TrimSpace(path)
 
 	caches, err := UseStoreCache[api.Server](serverStore, serverStoreCache)
 	if err != nil {
 		log.Fatal(err)
 	}
 	for _, cache := range caches.All() {
-		if cache.Data.Config.Port == port {
-			return fmt.Errorf("port %v already taken with path %v", port, cache.Data.Config.Path)
+		if cache.Data.Port == port {
+			return fmt.Errorf("store port %v already taken with path %v", port, cache.Data.Path)
 		}
 	}
 
 	server, err := api.NewServer(api.ServerConfig{
+		Name: s.key,
 		Port: port,
 		Path: path,
 	})
@@ -72,12 +79,7 @@ func (s *Store) Serve(port string, path string) error {
 		return err
 	}
 
-	wsRoute := api.NewRoute("/ws")
-	wsRoute.HandleFunc("", handlers.HandleGetWebSocket)
-
-	server.UseRoute(wsRoute)
-
-	if err = caches.Save(server, s.name); err != nil {
+	if err = caches.Save(server, s.key); err != nil {
 		return err
 	}
 

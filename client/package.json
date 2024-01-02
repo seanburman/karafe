@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "start": "react-scripts start",
     "dev": "vite",
-    "build": "react-scripts build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "keywords": [],
