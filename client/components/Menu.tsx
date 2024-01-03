@@ -3,9 +3,7 @@ import {
     DrawerContentScrollView,
 } from "@react-navigation/drawer";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { Drawer, DrawerItem, Layout, IndexPath } from "@ui-kitten/components";
 import { useState } from "react";
-import { ThemeColors } from "../theme/colors";
 import { useTheme } from "../context/theme";
 
 const routes = ["Stores", "Documentation"];
@@ -30,20 +28,30 @@ export default function Menu(props: DrawerContentComponentProps) {
             </View>
             {routes.map((route, i) => (
                 <Pressable
-                onPress={() => handleSelection(i)}
+                    onPress={() => handleSelection(i)}
                     style={[
                         styles.menuItemWrapper,
                         index === i
                             ? {
                                   backgroundColor: colors.primary,
-                                  ...styles.menuItemSelected
+                                  ...styles.menuItemSelected,
                               }
                             : undefined,
                     ]}
                     disabled={index === i}
                     key={i}
                 >
-                    <Text style={styles.menuItemText}>{route}</Text>
+                    <Text
+                        style={[
+                            styles.menuItemText,
+                            {
+                                color:
+                                    index === i ? colors.secondary : colors.text,
+                            },
+                        ]}
+                    >
+                        {route}
+                    </Text>
                 </Pressable>
             ))}
         </View>
@@ -59,8 +67,8 @@ const styles = StyleSheet.create({
         alignItems: "center",
     },
     logo: {
-        width: 100,
-        height: 100,
+        width: 80,
+        height: 80,
     },
     logoText: {
         fontFamily: "Alata, sans-serif",
@@ -77,7 +85,7 @@ const styles = StyleSheet.create({
     },
     menuItemSelected: {
         borderRadius: 8,
-        color: "#FFFFFF"
+        color: "#FFFFFF",
     },
     menuItemText: {
         paddingLeft: 20,
