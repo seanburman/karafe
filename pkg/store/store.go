@@ -65,8 +65,8 @@ func (s *Store) Serve(port string, path string) error {
 		log.Fatal(err)
 	}
 	for _, cache := range caches.All() {
-		if cache.Data.Port == port {
-			return fmt.Errorf("store port %v already taken with path %v", port, cache.Data.Path)
+		if cache.Data.Config.Port == port {
+			return fmt.Errorf("store port %v already taken with path %v", port, cache.Data.Config.Path)
 		}
 	}
 
