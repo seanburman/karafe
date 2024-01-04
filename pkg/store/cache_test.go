@@ -23,7 +23,7 @@ func TestGet(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	data, ok := cache.Get(key)
+	data, ok := cache.GetOne(key)
 	if !ok {
 		t.Errorf("could not get cache with key %v; expected value %v", key, expected)
 	}
@@ -31,7 +31,7 @@ func TestGet(t *testing.T) {
 		t.Errorf("got wrong cache value %v, expected %v", data.Data, &expected)
 	}
 
-	noData, ok := cache.Get("invalid_key")
+	noData, ok := cache.GetOne("invalid_key")
 	if ok {
 		t.Errorf("expected ok to be false with invalid key")
 	}
@@ -49,7 +49,7 @@ func TestAll(t *testing.T) {
 			t.Error(err)
 		}
 	}
-	data := cache.All()
+	data := cache.GetAll()
 	if len(data) != len(nums) {
 		t.Error("returned incorrect number of items")
 	}
@@ -117,7 +117,7 @@ func TestDelete(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if len(cache.All()) != 7 {
+	if len(cache.GetAll()) != 7 {
 		t.Error("expected one item to be deleted from cache")
 	}
 	err = cache.Delete(0)

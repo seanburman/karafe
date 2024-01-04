@@ -21,7 +21,7 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cache.SetSerializer(func(cfg SerializerConfig[api.Server]) []byte {
+	cache.SetReducer(func(cfg ReducerConfig[api.Server]) []byte {
 		for _, server := range cfg.Data {
 			fmt.Printf("Caching store %s\n", server.Key)
 		}
@@ -60,25 +60,16 @@ func NewStore(key string) *Store {
 func (s *Store) Serve(port string, path string) error {
 	path = strings.TrimSpace(path)
 
-	caches, err := UseStoreCache[api.Server](serverStore, serverStoreCache)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, cache := range caches.All() {
-		if cache.Data.Config.Port == port {
-			return fmt.Errorf("store port %v already taken with path %v", port, cache.Data.Config.Path)
-		}
-	}
-
-	server, err := api.NewServer(api.ServerConfig{
-		Name: s.key,
-		Port: port,
-		Path: path,
-	})
+	cfg := api.NewConfig(port, path, s.key)
+	server, err := api.NewServer(cfg)
 	if err != nil {
 		return err
 	}
 
+	caches, err := UseStoreCache[api.Server](serverStore, serverStoreCache)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if err = caches.Save(server, s.key); err != nil {
 		return err
 	}

@@ -10,21 +10,20 @@ import (
 
 type (
 	cache[T interface{}] struct {
-		createdAt  time.Time
-		raw        *raw[T]
-		serializer *serializer[T]
+		mu        sync.Mutex
+		createdAt time.Time
+		raw       *raw[T]
+		reducer   *reducer[T]
 	}
 	raw[T interface{}] struct {
-		mu      sync.Mutex
 		caches  map[CacheKey]*Item[T]
 		history map[time.Time]map[CacheKey]Item[T]
 		feed    chan map[time.Time]map[CacheKey]Item[T]
 	}
-	serializer[T interface{}] struct {
-		mu        sync.Mutex
-		serialize *func(SerializerConfig[T]) []byte
-		feed      chan []byte
-		history   map[time.Time][]byte
+	reducer[T interface{}] struct {
+		reduce  *func(ReducerConfig[T]) []byte
+		feed    chan []byte
+		history map[time.Time][]byte
 	}
 	Item[T interface{}] struct {
 		CreatedAt time.Time `json:"created_at"`
@@ -36,12 +35,12 @@ type (
 		timeoutFun func(data *T)
 		timeout    time.Duration
 	}
-	CacheKey                        interface{}
-	SerializerConfig[T interface{}] struct {
+	CacheKey                     interface{}
+	ReducerConfig[T interface{}] struct {
 		CreatedAt time.Time
-		Data      []SerialData[T]
+		Data      []ReducerData[T]
 	}
-	SerialData[T interface{}] struct {
+	ReducerData[T interface{}] struct {
 		Key  CacheKey
 		Item Item[T]
 	}
@@ -56,7 +55,7 @@ func newCache[T interface{}]() (data *cache[T]) {
 			history: make(map[time.Time]map[CacheKey]Item[T]),
 			feed:    make(chan map[time.Time]map[CacheKey]Item[T], 1024),
 		},
-		serializer: &serializer[T]{
+		reducer: &reducer[T]{
 			feed:    make(chan []byte, 1024),
 			history: make(map[time.Time][]byte),
 		},
@@ -81,8 +80,8 @@ func (c *cache[T]) monitorChanges(setup chan bool) {
 }
 
 func (c *cache[T]) copyRaw() map[CacheKey]Item[T] {
-	c.raw.mu.Lock()
-	defer c.raw.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	copy := make(map[CacheKey]Item[T])
 	for k, v := range c.raw.caches {
 		copy[k] = *v
@@ -91,69 +90,69 @@ func (c *cache[T]) copyRaw() map[CacheKey]Item[T] {
 }
 
 func (c *cache[T]) cacheCopy(copy map[CacheKey]Item[T]) {
-	c.raw.mu.Lock()
+	c.mu.Lock()
 	t := time.Now()
 	c.raw.history[t] = copy
 	c.raw.feed <- c.raw.history
-	c.raw.mu.Unlock()
-	go c.serialize(t, copy)
+	c.mu.Unlock()
+	go c.reduce(t, copy)
 }
 
-func (c *cache[T]) SetSerializer(sf func(cfg SerializerConfig[T]) []byte) {
-	c.serializer.mu.Lock()
-	defer c.serializer.mu.Unlock()
-	c.serializer.serialize = &sf
+func (c *cache[T]) SetReducer(sf func(cfg ReducerConfig[T]) []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reducer.reduce = &sf
 }
 
-func (c *cache[T]) serialize(t time.Time, copy map[CacheKey]Item[T]) {
-	if c.serializer.serialize == nil {
+func (c *cache[T]) reduce(t time.Time, copy map[CacheKey]Item[T]) {
+	if c.reducer.reduce == nil {
 		return
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	config := SerializerConfig[T]{}
+	config := ReducerConfig[T]{}
 	config.CreatedAt = t
 	for key, item := range copy {
-		config.Data = append(config.Data, SerialData[T]{
+		config.Data = append(config.Data, ReducerData[T]{
 			Key:  key,
 			Item: item,
 		})
 	}
 
-	c.serializer.mu.Lock()
-	serialize := *c.serializer.serialize
+	serialize := *c.reducer.reduce
 	dataSerialized := serialize(config)
-	c.serializer.history[config.CreatedAt] = dataSerialized
-	c.serializer.feed <- dataSerialized
-	c.serializer.mu.Unlock()
+	c.reducer.history[config.CreatedAt] = dataSerialized
+	c.reducer.feed <- dataSerialized
 }
 
-func (c *cache[T]) FeedRaw() chan map[time.Time]map[CacheKey]Item[T] {
-	c.raw.mu.Lock()
-	defer c.raw.mu.Unlock()
+func (c *cache[T]) RawFeed() chan map[time.Time]map[CacheKey]Item[T] {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.raw.feed
 }
 
-func (c *cache[T]) FeedSerialized() chan []byte {
-	c.serializer.mu.Lock()
-	defer c.serializer.mu.Unlock()
-	return c.serializer.feed
+func (c *cache[T]) ReducerFeed() chan []byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.reducer.feed
 }
 
-func (c *cache[T]) HistoryRaw() map[time.Time]map[CacheKey]Item[T] {
-	c.raw.mu.Unlock()
-	defer c.raw.mu.Unlock()
+func (c *cache[T]) RawHistory() map[time.Time]map[CacheKey]Item[T] {
+	c.mu.Unlock()
+	defer c.mu.Unlock()
 	return c.raw.history
 }
 
-func (c *cache[T]) HistorySerialized() map[time.Time][]byte {
-	c.serializer.mu.Lock()
-	defer c.serializer.mu.Unlock()
-	return c.serializer.history
+func (c *cache[T]) ReducerHistory() map[time.Time][]byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.reducer.history
 }
 
-func (c *cache[T]) Get(key CacheKey) (*Item[T], bool) {
-	c.raw.mu.Lock()
-	defer c.raw.mu.Unlock()
+func (c *cache[T]) GetOne(key CacheKey) (*Item[T], bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	data := c.raw.caches[key]
 	if data == nil {
@@ -162,15 +161,15 @@ func (c *cache[T]) Get(key CacheKey) (*Item[T], bool) {
 	return data, true
 }
 
-func (c *cache[T]) All() map[CacheKey]*Item[T] {
-	c.raw.mu.Lock()
-	defer c.raw.mu.Unlock()
+func (c *cache[T]) GetAll() map[CacheKey]*Item[T] {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.raw.caches
 }
 
 func (c *cache[T]) Save(data *T, key CacheKey) error {
-	c.raw.mu.Lock()
-	defer c.raw.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.raw.caches[key] != nil {
 		return fmt.Errorf("duplicate cache key: %v", key)
@@ -193,7 +192,7 @@ func (c *cache[T]) SaveWithTimeout(cfg cacheTimeoutConfig[T]) error {
 	go func() {
 		timer := time.NewTimer(cfg.timeout)
 		<-timer.C
-		cache, ok := c.Get(cfg.key)
+		cache, ok := c.GetOne(cfg.key)
 		if !ok {
 			log.Panicf("could not get cache with key %v", cfg.key)
 		}
@@ -207,8 +206,8 @@ func (c *cache[T]) SaveWithTimeout(cfg cacheTimeoutConfig[T]) error {
 }
 
 func (c *cache[T]) Delete(key interface{}) error {
-	c.raw.mu.Lock()
-	defer c.raw.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.raw.caches[key] == nil {
 		return fmt.Errorf("no cache with key: %v", key)

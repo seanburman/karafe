@@ -63,7 +63,7 @@ func TestUseStoreCache(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if len(cache.All()) != 1 {
+	if len(cache.GetAll()) != 1 {
 		t.Error("cache not retrieved")
 	}
 
