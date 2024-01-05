@@ -19,10 +19,11 @@ type (
 		servers map[string]*Server
 	}
 	Server struct {
-		app            *echo.Echo
-		cfg            serverConfig
-		internal       chan []byte
-		ConnectionPool *connection.Pool
+		app             *echo.Echo
+		cfg             serverConfig
+		msgs            chan []byte
+		onNewConnection func(c *connection.Connection)
+		ConnectionPool  *connection.Pool
 	}
 	serverConfig struct {
 		Port string
@@ -32,6 +33,9 @@ type (
 )
 
 func NewServer(cfg serverConfig) (*Server, error) {
+	if cfg.Path == "" {
+		return nil, fmt.Errorf("server path cannot root")
+	}
 	manager.mu.Lock()
 	for port, sv := range manager.servers {
 		if port == cfg.Port {
@@ -48,13 +52,14 @@ func NewServer(cfg serverConfig) (*Server, error) {
 	server := &Server{
 		app:            echo.New(),
 		cfg:            cfg,
+		msgs:           make(chan []byte, 16),
 		ConnectionPool: connection.NewPool(),
 	}
 
 	manager.servers[server.cfg.Port] = server
 	manager.mu.Unlock()
 
-	server.app.Static(cfg.Path+"/client", "public")
+	server.app.Static("", "public")
 	ws := server.app.Group(cfg.Path + "/ws")
 	ws.GET("/subscribe", server.handleSubscribe)
 
@@ -93,16 +98,27 @@ func (s *Server) handleSubscribe(ctx echo.Context) error {
 	if err := s.ConnectionPool.AddConnection(conn); err != nil {
 		return err
 	}
-	return nil
-}
-
-func (s *Server) publish(msg []byte) error {
-	for _, conn := range s.ConnectionPool.Connections() {
-		conn.WriteMessage(msg)
+	if s.onNewConnection != nil {
+		s.onNewConnection(conn)
 	}
+	conn.Listen()
 	return nil
 }
 
-func (s *Server) handleCommands(ctx echo.Context) error {
-
+func (s *Server) SetOnNewConnection(callback func(c *connection.Connection)) {
+	s.onNewConnection = callback
 }
+
+func (s *Server) Publish(msg interface{}) {
+	for _, conn := range s.ConnectionPool.Connections() {
+		select {
+		case conn.Messages <- msg:
+		default:
+			conn.Close()
+		}
+	}
+}
+
+// func (s *Server) handleCommands(ctx echo.Context) error {
+
+// }

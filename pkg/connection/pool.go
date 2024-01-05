@@ -30,6 +30,7 @@ func (p *Pool) AddConnection(c *Connection) error {
 		return fmt.Errorf("connection with key %v already exists", c.Key)
 	}
 	p.conns[c.Key] = c
+	c.Pool = p
 	return nil
 }
 

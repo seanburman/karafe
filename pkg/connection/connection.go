@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 )
@@ -14,7 +15,7 @@ type (
 		websocket *websocket.Conn
 		Pool      *Pool
 		Key       interface{}
-		msgs      chan []byte
+		Messages  chan interface{}
 	}
 )
 
@@ -27,31 +28,36 @@ func NewConnection(ctx echo.Context) (*Connection, error) {
 		log.Println("error upgrading connection: ", err.Error())
 		return nil, echo.NewHTTPError(http.StatusInternalServerError)
 	}
-	c := &Connection{websocket: websocket, msgs: make(chan []byte, 16)}
+	c := &Connection{
+		websocket: websocket,
+		Key:       uuid.New(),
+		Messages:  make(chan interface{}, 16),
+	}
 
 	return c, nil
 }
 
 func (c *Connection) Close() error {
 	if c == nil {
-		log.Fatal("attemped to close nil Connection")
+		return fmt.Errorf("attemped to close nil Connection")
 	}
 	c.Pool.removeConnection(c)
 	c.websocket.Close()
 	return nil
 }
 
-func (c *Connection) WriteMessage(msg []byte) {
+func (c *Connection) Listen() {
 	for {
-		select {
-		case c.msgs <- msg:
-		default:
-			c.Close()
-		}
+		msg := <-c.Messages
+		fmt.Println(msg)
 		err := c.websocket.WriteJSON(msg)
 		if err != nil {
-			log.Println(fmt.Errorf("error relaying message"))
-			log.Panic(err)
+			log.Println(fmt.Errorf("error sending message: %v", err))
+			c.Close()
 		}
 	}
+}
+
+func (c *Connection) Publish(msg interface{}) {
+	c.Messages <- msg
 }

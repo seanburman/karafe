@@ -21,9 +21,9 @@ type (
 		feed    chan map[time.Time]map[CacheKey]Item[T]
 	}
 	reducer[T interface{}] struct {
-		reduce  *func(ReducerConfig[T]) []byte
-		feed    chan []byte
-		history map[time.Time][]byte
+		reduce  *func(ReducerConfig[T]) interface{}
+		feed    chan interface{}
+		history map[time.Time]interface{}
 	}
 	Item[T interface{}] struct {
 		CreatedAt time.Time `json:"created_at"`
@@ -46,7 +46,6 @@ type (
 	}
 )
 
-// newCache[T] returns a new instance of *cache[T]
 func newCache[T interface{}]() (data *cache[T]) {
 	c := &cache[T]{
 		createdAt: time.Now(),
@@ -56,8 +55,8 @@ func newCache[T interface{}]() (data *cache[T]) {
 			feed:    make(chan map[time.Time]map[CacheKey]Item[T], 1024),
 		},
 		reducer: &reducer[T]{
-			feed:    make(chan []byte, 1024),
-			history: make(map[time.Time][]byte),
+			feed:    make(chan interface{}, 1024),
+			history: make(map[time.Time]interface{}),
 		},
 	}
 	setup := make(chan bool)
@@ -71,6 +70,8 @@ func (c *cache[T]) monitorChanges(setup chan bool) {
 	prev := c.copyRaw()
 	setup <- true
 	for {
+		//TODO: Apply reducer to this data so we can see changes the user
+		// is looking for.
 		current := c.copyRaw()
 		if !reflect.DeepEqual(current, prev) {
 			c.cacheCopy(current)
@@ -98,7 +99,7 @@ func (c *cache[T]) cacheCopy(copy map[CacheKey]Item[T]) {
 	go c.reduce(t, copy)
 }
 
-func (c *cache[T]) SetReducer(sf func(cfg ReducerConfig[T]) []byte) {
+func (c *cache[T]) SetReducer(sf func(cfg ReducerConfig[T]) interface{}) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.reducer.reduce = &sf
@@ -120,10 +121,10 @@ func (c *cache[T]) reduce(t time.Time, copy map[CacheKey]Item[T]) {
 		})
 	}
 
-	serialize := *c.reducer.reduce
-	dataSerialized := serialize(config)
-	c.reducer.history[config.CreatedAt] = dataSerialized
-	c.reducer.feed <- dataSerialized
+	reduce := *c.reducer.reduce
+	dataReduced := reduce(config)
+	c.reducer.history[config.CreatedAt] = dataReduced
+	c.reducer.feed <- dataReduced
 }
 
 func (c *cache[T]) RawFeed() chan map[time.Time]map[CacheKey]Item[T] {
@@ -132,19 +133,19 @@ func (c *cache[T]) RawFeed() chan map[time.Time]map[CacheKey]Item[T] {
 	return c.raw.feed
 }
 
-func (c *cache[T]) ReducerFeed() chan []byte {
+func (c *cache[T]) ReducerFeed() chan interface{} {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.reducer.feed
 }
 
 func (c *cache[T]) RawHistory() map[time.Time]map[CacheKey]Item[T] {
-	c.mu.Unlock()
+	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.raw.history
 }
 
-func (c *cache[T]) ReducerHistory() map[time.Time][]byte {
+func (c *cache[T]) ReducerHistory() map[time.Time]interface{} {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.reducer.history
