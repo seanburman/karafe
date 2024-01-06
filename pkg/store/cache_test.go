@@ -19,7 +19,7 @@ func TestGet(t *testing.T) {
 	cache := newCache[int]()
 	expected := 1
 	key := "one"
-	err := cache.Save(&expected, key)
+	err := cache.Cache(&expected, key)
 	if err != nil {
 		t.Error(err)
 	}
@@ -44,7 +44,7 @@ func TestAll(t *testing.T) {
 	cache := newCache[int]()
 	nums := []int{1, 2, 3, 4, 5, 6, 7, 8}
 	for k := range nums {
-		err := cache.Save(&nums[k], k)
+		err := cache.Cache(&nums[k], k)
 		if err != nil {
 			t.Error(err)
 		}
@@ -61,24 +61,24 @@ func TestAll(t *testing.T) {
 	}
 }
 
-func TestSave(t *testing.T) {
+func TestCache(t *testing.T) {
 	cache := newCache[int]()
 	nums := []int{1, 2, 3, 4, 5, 6, 7, 8}
 	for k := range nums {
-		err := cache.Save(&nums[k], k)
+		err := cache.Cache(&nums[k], k)
 		if err != nil {
 			t.Error(err)
 		}
 	}
 	for k := range nums {
-		err := cache.Save(&nums[k], k)
+		err := cache.Cache(&nums[k], k)
 		if err == nil {
 			t.Error("expected duplicate key error")
 		}
 	}
 }
 
-func TestSaveWithTimeout(t *testing.T) {
+func TestCacheWithTimeout(t *testing.T) {
 	cache := newCache[int]()
 	data := 1
 	key := "one"
@@ -87,7 +87,7 @@ func TestSaveWithTimeout(t *testing.T) {
 		ch <- *data
 	}
 	cfg := NewCacheTimeoutConfig[int](&data, key, timeoutFunc, time.Microsecond*1)
-	err := cache.SaveWithTimeout(cfg)
+	err := cache.CacheWithTimeout(cfg)
 	if err != nil {
 		t.Error(err)
 	}
@@ -98,7 +98,7 @@ func TestSaveWithTimeout(t *testing.T) {
 	}
 
 	cfg.timeout = 0
-	err = cache.SaveWithTimeout(cfg)
+	err = cache.CacheWithTimeout(cfg)
 	if err == nil {
 		t.Error("expected timeout length must be greater than 0 error")
 	}
@@ -108,7 +108,7 @@ func TestDelete(t *testing.T) {
 	cache := newCache[int]()
 	nums := []int{1, 2, 3, 4, 5, 6, 7, 8}
 	for k := range nums {
-		err := cache.Save(&nums[k], k)
+		err := cache.Cache(&nums[k], k)
 		if err != nil {
 			t.Error(err)
 		}

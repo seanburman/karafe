@@ -47,9 +47,29 @@ func (c *Connection) Close() error {
 }
 
 func (c *Connection) Listen() {
+
+	go func(c *Connection) {
+		for {
+			_, _, err := c.websocket.ReadMessage()
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
+					log.Printf("error: %v", err)
+				}
+				close(c.Messages)
+				break
+			}
+		}
+	}(c)
+
 	for {
-		msg := <-c.Messages
-		fmt.Println(msg)
+		msg, ok := <-c.Messages
+		if !ok {
+			// Channel has been closed
+			fmt.Println("CLOSING")
+			c.Close()
+			break
+		}
+		log.Println("Message: ", msg)
 		err := c.websocket.WriteJSON(msg)
 		if err != nil {
 			log.Println(fmt.Errorf("error sending message: %v", err))

@@ -39,7 +39,7 @@ func TestKeys(t *testing.T) {
 
 func TestCreateStoreCache(t *testing.T) {
 	store := NewStore("test")
-	key := 0
+	key := "test"
 	_, err := CreateStoreCache[int](store, StoreKey(key))
 	if err != nil {
 		t.Error(err)
@@ -50,15 +50,17 @@ func TestCreateStoreCache(t *testing.T) {
 	}
 }
 
+// TODO: Update with t.Run flags
 func TestUseStoreCache(t *testing.T) {
 	store := NewStore("test")
-	key := 0
+	key := "test"
 	cache, err := CreateStoreCache[int](store, StoreKey(key))
 	if err != nil {
 		t.Error(err)
 	}
+
 	data := 123
-	cache.Save(&data, key)
+	cache.Cache(&data, key)
 	cache, err = UseStoreCache[int](store, StoreKey(key))
 	if err != nil {
 		t.Error(err)
@@ -67,12 +69,12 @@ func TestUseStoreCache(t *testing.T) {
 		t.Error("cache not retrieved")
 	}
 
-	_, err = UseStoreCache[int](store, StoreKey(2))
+	_, err = UseStoreCache[int](store, StoreKey("test2"))
 	if err == nil {
 		t.Error("expected no data with key error")
 	}
 
-	_, err = UseStoreCache[string](store, StoreKey(0))
+	_, err = UseStoreCache[string](store, StoreKey("test"))
 	if err == nil {
 		t.Error("expected invalid type for cache with key error")
 	}

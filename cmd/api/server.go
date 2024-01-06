@@ -98,11 +98,12 @@ func (s *Server) handleSubscribe(ctx echo.Context) error {
 	if err := s.ConnectionPool.AddConnection(conn); err != nil {
 		return err
 	}
+	// Trigger user defined call back on new connection
 	if s.onNewConnection != nil {
-		s.onNewConnection(conn)
+		go s.onNewConnection(conn)
 	}
 	conn.Listen()
-	return nil
+	return conn.Close()
 }
 
 func (s *Server) SetOnNewConnection(callback func(c *connection.Connection)) {
@@ -114,6 +115,7 @@ func (s *Server) Publish(msg interface{}) {
 		select {
 		case conn.Messages <- msg:
 		default:
+			fmt.Println("Closing")
 			conn.Close()
 		}
 	}

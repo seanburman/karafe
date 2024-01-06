@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/labstack/gommon/log"
 	"github.com/seanburman/kaw/cmd/api"
@@ -19,38 +18,16 @@ const serverStoreCache StoreKey = "server_store_cache"
 var serverStore = NewStore("server_store")
 
 func init() {
-	cache, err := CreateStoreCache[api.Server](serverStore, serverStoreCache)
+	_, err := CreateStoreCache[api.Server](serverStore, serverStoreCache)
 	if err != nil {
 		log.Fatal(err)
 	}
-	cache.SetReducer(func(cfg ReducerConfig[api.Server]) interface{} {
-		var data []struct {
-			key interface{}
-		}
-		for _, server := range cfg.Data {
-			for _, conn := range server.Item.Data.ConnectionPool.Connections() {
-				log.Info(conn)
-				data = append(data, struct {
-					key interface{}
-				}{
-					key: "test",
-				})
-			}
-		}
-		return data
-	})
 
 	port := ":" + os.Getenv("KACHE_KROW_PORT")
 	if port == ":" {
 		port = ":8080"
 	}
 	serverStore.Serve(port, "/store")
-
-	go func(feed chan map[time.Time]map[CacheKey]Item[api.Server]) {
-		for item := range feed {
-			fmt.Println(item)
-		}
-	}(cache.raw.feed)
 }
 
 type (
@@ -88,18 +65,21 @@ func (s *Store) Serve(port string, path string) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err = caches.Save(server, s.key); err != nil {
+
+	caches.SetReducer(func(cfg ReducerConfig[api.Server]) any {
+		var data []any
+		for _, v := range cfg.Data {
+			data = append(data, v.Item.Config())
+		}
+		return data
+	})
+
+	if err = caches.Cache(server, s.key); err != nil {
 		return err
 	}
 
 	server.SetOnNewConnection(func(c *connection.Connection) {
-		var data []interface{}
-		for _, v := range caches.GetAll() {
-			for _, c := range v.Data.ConnectionPool.Connections() {
-				data = append(data, c.Key)
-			}
-		}
-		c.Publish(data)
+		c.Publish(caches.ReducerHistory())
 	})
 
 	server.ListenAndServe()
