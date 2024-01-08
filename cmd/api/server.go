@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/labstack/echo/v4"
-	"github.com/seanburman/kaw/pkg/connection"
+	"github.com/seanburman/kachekrow/pkg/connection"
 )
 
 var manager = &serverManager{
@@ -59,7 +59,7 @@ func NewServer(cfg serverConfig) (*Server, error) {
 	manager.servers[server.cfg.Port] = server
 	manager.mu.Unlock()
 
-	server.app.Static("", "public")
+	server.app.Static("", "client/web-build")
 	ws := server.app.Group(cfg.Path + "/ws")
 	ws.GET("/subscribe", server.handleSubscribe)
 

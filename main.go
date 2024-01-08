@@ -3,16 +3,16 @@ package main
 import (
 	"embed"
 
-	"github.com/seanburman/kaw/pkg/store"
+	"github.com/seanburman/kachekrow/pkg/store"
 )
 
 var (
-	//go:embed public
+	//go:embed client/web-build
 	_ embed.FS
 )
 
 func main() {
 	finish := make(chan bool)
-	store.Kaw()
+	store.KacheKrow()
 	<-finish
 }

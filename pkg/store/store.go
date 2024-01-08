@@ -8,17 +8,28 @@ import (
 	"sync"
 
 	"github.com/labstack/gommon/log"
-	"github.com/seanburman/kaw/cmd/api"
-	"github.com/seanburman/kaw/cmd/gui"
-	"github.com/seanburman/kaw/pkg/connection"
+	"github.com/seanburman/kachekrow/cmd/api"
+	"github.com/seanburman/kachekrow/cmd/gui"
+	"github.com/seanburman/kachekrow/pkg/connection"
 )
 
-const serverStoreCache StoreKey = "server_store_cache"
+const ServerStore StoreKey = "servers"
 
-var serverStore = NewStore("server_store")
+var ServerCache = CacheKey("servers_cache")
+
+var storeManager struct {
+	mu     sync.Mutex
+	stores map[StoreKey]*Store
+} = struct {
+	mu     sync.Mutex
+	stores map[StoreKey]*Store
+}{
+	stores: make(map[StoreKey]*Store),
+}
 
 func init() {
-	_, err := CreateStoreCache[api.Server](serverStore, serverStoreCache)
+	serverStore, _ := NewStore(ServerStore)
+	_, err := NewCache[api.Server](serverStore, ServerCache)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,45 +44,61 @@ func init() {
 type (
 	Store struct {
 		mu   sync.Mutex
-		key  string
-		data map[interface{}]interface{}
-		keys []StoreKey
+		key  StoreKey
+		data map[CacheKey]any
 	}
 	StoreKey string
 )
 
-func Kaw() {
-	fmt.Println(`𓅩 KAW! Kaching At Will`)
+func KacheKrow() {
+	fmt.Println(`𓅩 KACHE KROW`)
 	gui.ListenCommands()
 }
 
-func NewStore(key string) *Store {
-	return &Store{
-		key:  key,
-		data: make(map[interface{}]interface{}),
+func UseStore(key StoreKey) *Store {
+	storeManager.mu.Lock()
+	defer storeManager.mu.Unlock()
+	store, ok := storeManager.stores[key]
+	if !ok {
+		return nil
 	}
+	return store
+}
+
+func NewStore(key StoreKey) (*Store, error) {
+	storeManager.mu.Lock()
+	defer storeManager.mu.Unlock()
+	s := &Store{
+		key:  key,
+		data: make(map[CacheKey]any),
+	}
+	_, ok := storeManager.stores[key]
+	if ok {
+		return nil, fmt.Errorf("store with key '%v' already exists", key)
+	}
+	storeManager.stores[key] = s
+	return s, nil
 }
 
 func (s *Store) Serve(port string, path string) error {
 	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("empty store path for port: %s", port)
+	}
 
-	cfg := api.NewConfig(port, path, s.key)
+	cfg := api.NewConfig(port, path, string(s.key))
 	server, err := api.NewServer(cfg)
 	if err != nil {
 		return err
 	}
 
-	caches, err := UseStoreCache[api.Server](serverStore, serverStoreCache)
+	caches, err := UseCache[api.Server](ServerStore, ServerCache)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	caches.SetReducer(func(cfg ReducerConfig[api.Server]) any {
-		var data []any
-		for _, v := range cfg.Data {
-			data = append(data, v.Item.Config())
-		}
-		return data
+	caches.SetReducer(func(previous []any, current api.Server) (next []any) {
+		return append(previous, current.Config())
 	})
 
 	if err = caches.Cache(server, s.key); err != nil {
@@ -86,39 +113,35 @@ func (s *Store) Serve(port string, path string) error {
 	return nil
 }
 
-func (s *Store) Keys() []StoreKey {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.keys
-}
-
-func CreateStoreCache[Cache interface{}](s *Store, key StoreKey) (*cache[Cache], error) {
+func NewCache[Cache any](s *Store, key CacheKey) (*cache[Cache], error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, v := range s.keys {
-		if v == key {
-			return nil, fmt.Errorf("key %v already exists", key)
-		}
+	_, ok := s.data[key]
+	if ok {
+		return nil, fmt.Errorf("key '%v' already exists", key)
 	}
-	s.keys = append(s.keys, key)
+
 	cs := newCache[Cache]()
 	s.data[key] = cs
 
 	return cs, nil
 }
 
-func UseStoreCache[Cache interface{}](s *Store, key StoreKey) (*cache[Cache], error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	data, ok := s.data[key]
+func UseCache[Cache any](s StoreKey, c CacheKey) (*cache[Cache], error) {
+	store := UseStore(s)
+	if store == nil {
+		return nil, fmt.Errorf("no store with key '%v'", s)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	data, ok := store.data[c]
 	if !ok {
-		return nil, fmt.Errorf("no data with key %v", key)
+		return nil, fmt.Errorf("no cache with key '%v'", c)
 	}
 	cache, ok := data.(*cache[Cache])
 	if !ok {
-		return nil, fmt.Errorf("invalid type for cache with key %v", key)
+		return nil, fmt.Errorf("invalid type for cache with key %v", c)
 	}
 	return cache, nil
 }

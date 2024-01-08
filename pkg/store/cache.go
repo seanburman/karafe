@@ -21,7 +21,7 @@ type (
 		feed    chan map[time.Time]map[CacheKey]Item[T]
 	}
 	reducer[T any] struct {
-		reduce  *func(ReducerConfig[T]) any
+		reduce  *func([]ReducerData[T]) []any
 		feed    chan any
 		history map[time.Time]any
 	}
@@ -35,14 +35,16 @@ type (
 		timeoutFun func(data *T)
 		timeout    time.Duration
 	}
-	CacheKey             any
-	ReducerConfig[T any] struct {
+	CacheKey                  any
+	ReducerFunc[T any, U any] func(previous []U, current T) (next []U)
+	ReducerConfig[T any]      struct {
 		CreatedAt time.Time
 		Data      []ReducerData[T]
 	}
 	ReducerData[T any] struct {
-		Key  CacheKey
-		Item T
+		Key       CacheKey  `json:"key"`
+		CreatedAt time.Time `json:"created_at"`
+		Data      T         `json:"data"`
 	}
 )
 
@@ -63,18 +65,16 @@ func newCache[T any]() (data *cache[T]) {
 }
 
 func (c *cache[T]) monitorChanges(setup chan bool) {
-	if c.reducer.reduce == nil {
-		log.Printf("no reducer set for cache type: %v, setting DefaultReducer", reflect.TypeOf(*new(T)))
-		c.SetReducer(c.DefaultReducer)
-	}
-	// Apply user defined or default reducer
 	pcopy := c.copyRaw()
 	setup <- true
-	prev := c.reduce(time.Now(), pcopy)
+	prev := c.reduce(pcopy)
 	c.cacheCopy(pcopy)
 	for {
 		ccopy := c.copyRaw()
-		current := c.reduce(time.Now(), ccopy)
+		current := c.reduce(ccopy)
+		if current == nil {
+			continue
+		}
 		// Check for changes
 		if !reflect.DeepEqual(prev, current) {
 			c.cacheCopy(ccopy)
@@ -99,12 +99,23 @@ func (c *cache[T]) cacheCopy(copy map[CacheKey]Item[T]) {
 	c.raw.history[t] = copy
 	c.raw.feed <- c.raw.history
 	c.mu.Unlock()
-	go c.cacheReduction(t, c.reduce(t, copy))
+	go c.cacheReduction(t, c.reduce(copy))
 }
 
-func (c *cache[T]) SetReducer(sf func(cfg ReducerConfig[T]) any) {
+func newCacheReducer[T, U any](f ReducerFunc[T, U]) func([]ReducerData[T]) []U {
+	return func(rd []ReducerData[T]) []U {
+		var u []U
+		for _, d := range rd {
+			u = f(u, d.Data)
+		}
+		return u
+	}
+}
+
+func (c *cache[T]) SetReducer(rf ReducerFunc[T, any]) {
+	cr := newCacheReducer(rf)
 	c.mu.Lock()
-	c.reducer.reduce = &sf
+	c.reducer.reduce = &cr
 	c.mu.Unlock()
 
 	setup := make(chan bool)
@@ -113,34 +124,32 @@ func (c *cache[T]) SetReducer(sf func(cfg ReducerConfig[T]) any) {
 	<-setup
 }
 
-func (c *cache[T]) DefaultReducer(cfg ReducerConfig[T]) any {
-	var d []interface{}
-	for _, v := range cfg.Data {
-		d = append(d, v.Item)
-	}
-	return d
+func (c *cache[T]) DefaultReducer(previous []any, current T) (next []any) {
+	return append(previous, current)
 }
 
-func (c *cache[T]) reduce(t time.Time, copy map[CacheKey]Item[T]) any {
-	if c.reducer.reduce == nil {
-		return nil
-	}
+func (c *cache[T]) reduce(copy map[CacheKey]Item[T]) []any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.reducer.reduce == nil {
+		log.Printf("no reducer set for cache type: %v, setting DefaultReducer", reflect.TypeOf(*new(T)))
+		c.SetReducer(c.DefaultReducer)
+		return nil
+	}
 
-	config := ReducerConfig[T]{}
-	config.CreatedAt = t
+	data := []ReducerData[T]{}
 	for key, item := range copy {
-		config.Data = append(config.Data, ReducerData[T]{
-			Key:  key,
-			Item: *item.Data,
+		data = append(data, ReducerData[T]{
+			Key:       key,
+			CreatedAt: item.CreatedAt,
+			Data:      *item.Data,
 		})
 	}
 	reduce := *c.reducer.reduce
-	return reduce(config)
+	return reduce(data)
 }
 
-func (c *cache[T]) cacheReduction(t time.Time, r any) {
+func (c *cache[T]) cacheReduction(t time.Time, r []any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.reducer.history[t] = r
@@ -165,7 +174,7 @@ func (c *cache[T]) RawHistory() map[time.Time]map[CacheKey]Item[T] {
 	return c.raw.history
 }
 
-func (c *cache[T]) ReducerHistory() map[time.Time]interface{} {
+func (c *cache[T]) ReducerHistory() map[time.Time]any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.reducer.history
@@ -219,7 +228,7 @@ func (c *cache[T]) CacheWithTimeout(cfg cacheTimeoutConfig[T]) error {
 		}
 		err := c.Delete(cfg.key)
 		if err != nil {
-			log.Panicf("%v", err)
+			log.Panicln(err)
 		}
 		cfg.timeoutFun(cache.Data)
 	}()
@@ -237,7 +246,7 @@ func (c *cache[T]) Delete(key interface{}) error {
 	return nil
 }
 
-func NewCacheTimeoutConfig[T interface{}](
+func NewCacheTimeoutConfig[T any](
 	data *T,
 	key interface{},
 	timeoutFun func(data *T),

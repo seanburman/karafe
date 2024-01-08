@@ -11,7 +11,7 @@ func Example() {
 }
 
 func TestNewStore(t *testing.T) {
-	store := NewStore("test")
+	store, _ := NewStore("test")
 	storeType := reflect.TypeOf(store)
 	expected := "*store.Store"
 	actual := storeType.String()
@@ -24,27 +24,14 @@ func TestNewStore(t *testing.T) {
 	}
 }
 
-func TestKeys(t *testing.T) {
-	store := NewStore("test")
-	key := "test"
-	_, err := CreateStoreCache[int](store, StoreKey(key))
-	if err != nil {
-		t.Error(err)
-	}
-	keys := store.Keys()
-	if keys[0] != "test" {
-		t.Error("expected keys to contain new CacheKey")
-	}
-}
-
 func TestCreateStoreCache(t *testing.T) {
-	store := NewStore("test")
+	store, _ := NewStore("test")
 	key := "test"
-	_, err := CreateStoreCache[int](store, StoreKey(key))
+	_, err := NewCache[int](store, StoreKey(key))
 	if err != nil {
 		t.Error(err)
 	}
-	_, err = CreateStoreCache[int](store, StoreKey(key))
+	_, err = NewCache[int](store, StoreKey(key))
 	if err == nil {
 		t.Error("expected duplicate key error")
 	}
@@ -52,16 +39,17 @@ func TestCreateStoreCache(t *testing.T) {
 
 // TODO: Update with t.Run flags
 func TestUseStoreCache(t *testing.T) {
-	store := NewStore("test")
+	//TODO: Need TestMain to set up base store from init in store.go
+	store, _ := NewStore("test")
 	key := "test"
-	cache, err := CreateStoreCache[int](store, StoreKey(key))
+	cache, err := NewCache[int](store, StoreKey(key))
 	if err != nil {
 		t.Error(err)
 	}
 
 	data := 123
 	cache.Cache(&data, key)
-	cache, err = UseStoreCache[int](store, StoreKey(key))
+	cache, err = UseCache[int]("test", StoreKey(key))
 	if err != nil {
 		t.Error(err)
 	}
@@ -69,12 +57,12 @@ func TestUseStoreCache(t *testing.T) {
 		t.Error("cache not retrieved")
 	}
 
-	_, err = UseStoreCache[int](store, StoreKey("test2"))
+	_, err = UseCache[int]("test", StoreKey("test2"))
 	if err == nil {
 		t.Error("expected no data with key error")
 	}
 
-	_, err = UseStoreCache[string](store, StoreKey("test"))
+	_, err = UseCache[string]("test", StoreKey("test"))
 	if err == nil {
 		t.Error("expected invalid type for cache with key error")
 	}
