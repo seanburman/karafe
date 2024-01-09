@@ -7,7 +7,6 @@ build_bin:
 build_client:
 	cd client && \
 	npm run build-web && \
-	cp -r web-build/* ../public && \
 	cd ..
 
 run:

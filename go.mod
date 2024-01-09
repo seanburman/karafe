@@ -3,6 +3,7 @@ module github.com/seanburman/kachekrow
 go 1.21.5
 
 require (
+	github.com/charmbracelet/log v0.3.1
 	github.com/google/uuid v1.5.0
 	github.com/labstack/gommon v0.4.2
 )
@@ -10,7 +11,6 @@ require (
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/lipgloss v0.9.1 // indirect
-	github.com/charmbracelet/log v0.3.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
