@@ -1,12 +1,10 @@
-package api
+package store
 
 import (
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/labstack/echo/v4"
-	"github.com/seanburman/kachekrow/pkg/connection"
 )
 
 var manager = &serverManager{
@@ -22,8 +20,8 @@ type (
 		app             *echo.Echo
 		cfg             serverConfig
 		msgs            chan []byte
-		onNewConnection func(c *connection.Connection)
-		ConnectionPool  *connection.Pool
+		onNewConnection func(c *Connection)
+		ConnectionPool  *Pool
 	}
 	serverConfig struct {
 		Port string
@@ -53,7 +51,7 @@ func NewServer(cfg serverConfig) (*Server, error) {
 		app:            echo.New(),
 		cfg:            cfg,
 		msgs:           make(chan []byte, 16),
-		ConnectionPool: connection.NewPool(),
+		ConnectionPool: NewPool(),
 	}
 
 	manager.servers[server.cfg.Port] = server
@@ -67,6 +65,7 @@ func NewServer(cfg serverConfig) (*Server, error) {
 }
 
 func NewConfig(port, path, key string) serverConfig {
+	//TODO: Use functional config
 	return serverConfig{
 		port, path, key,
 	}
@@ -86,12 +85,12 @@ func (s *Server) Shutdown() {
 	manager.mu.Unlock()
 	err := s.app.Close()
 	if err != nil {
-		log.Fatal(err)
+		logger.Error(err)
 	}
 }
 
 func (s *Server) handleSubscribe(ctx echo.Context) error {
-	conn, err := connection.NewConnection(ctx)
+	conn, err := NewConnection(ctx)
 	if err != nil {
 		return err
 	}
@@ -106,7 +105,7 @@ func (s *Server) handleSubscribe(ctx echo.Context) error {
 	return conn.Close()
 }
 
-func (s *Server) SetOnNewConnection(callback func(c *connection.Connection)) {
+func (s *Server) SetOnNewConnection(callback func(c *Connection)) {
 	s.onNewConnection = callback
 }
 
@@ -115,7 +114,7 @@ func (s *Server) Publish(msg interface{}) {
 		select {
 		case conn.Messages <- msg:
 		default:
-			fmt.Println("Closing")
+			logger.Info("closing connection: ", conn.Key)
 			conn.Close()
 		}
 	}

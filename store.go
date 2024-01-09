@@ -8,33 +8,27 @@ import (
 	"sync"
 
 	"github.com/labstack/gommon/log"
-	"github.com/seanburman/kachekrow/cmd/api"
-	"github.com/seanburman/kachekrow/cmd/gui"
-	"github.com/seanburman/kachekrow/pkg/connection"
 )
 
 const ServerStore StoreKey = "servers"
 
 var ServerCache = CacheKey("servers_cache")
 
-var storeManager struct {
-	mu     sync.Mutex
-	stores map[StoreKey]*Store
-} = struct {
-	mu     sync.Mutex
-	stores map[StoreKey]*Store
-}{
+var StoreManager = storeManager{
 	stores: make(map[StoreKey]*Store),
 }
 
 func init() {
 	serverStore, _ := NewStore(ServerStore)
-	_, err := NewCache[api.Server](serverStore, ServerCache)
+	cache, err := NewCache[Server](serverStore, ServerCache)
 	if err != nil {
 		log.Fatal(err)
 	}
+	cache.SetReducer(func(state Server) (mutation any) {
+		return state.Config()
+	})
 
-	port := ":" + os.Getenv("KACHE_KROW_PORT")
+	port := ":" + os.Getenv("STORE_PORT")
 	if port == ":" {
 		port = ":8080"
 	}
@@ -42,23 +36,23 @@ func init() {
 }
 
 type (
+	storeManager struct {
+		mu     sync.Mutex
+		stores map[StoreKey]*Store
+	}
 	Store struct {
-		mu   sync.Mutex
-		key  StoreKey
-		data map[CacheKey]any
+		mu       sync.Mutex
+		key      StoreKey
+		data     map[CacheKey]any
+		Commands Commands
 	}
 	StoreKey string
 )
 
-func KacheKrow() {
-	fmt.Println(`𓅩 KACHE KROW`)
-	gui.ListenCommands()
-}
-
 func UseStore(key StoreKey) *Store {
-	storeManager.mu.Lock()
-	defer storeManager.mu.Unlock()
-	store, ok := storeManager.stores[key]
+	StoreManager.mu.Lock()
+	defer StoreManager.mu.Unlock()
+	store, ok := StoreManager.stores[key]
 	if !ok {
 		return nil
 	}
@@ -66,17 +60,17 @@ func UseStore(key StoreKey) *Store {
 }
 
 func NewStore(key StoreKey) (*Store, error) {
-	storeManager.mu.Lock()
-	defer storeManager.mu.Unlock()
+	StoreManager.mu.Lock()
+	defer StoreManager.mu.Unlock()
 	s := &Store{
-		key:  key,
-		data: make(map[CacheKey]any),
+		key:      key,
+		data:     make(map[CacheKey]any),
+		Commands: NewCommands(),
 	}
-	_, ok := storeManager.stores[key]
-	if ok {
+	if _, ok := StoreManager.stores[key]; ok {
 		return nil, fmt.Errorf("store with key '%v' already exists", key)
 	}
-	storeManager.stores[key] = s
+	StoreManager.stores[key] = s
 	return s, nil
 }
 
@@ -86,31 +80,33 @@ func (s *Store) Serve(port string, path string) error {
 		return fmt.Errorf("empty store path for port: %s", port)
 	}
 
-	cfg := api.NewConfig(port, path, string(s.key))
-	server, err := api.NewServer(cfg)
+	cfg := NewConfig(port, path, string(s.key))
+	server, err := NewServer(cfg)
 	if err != nil {
 		return err
 	}
 
-	caches, err := UseCache[api.Server](ServerStore, ServerCache)
+	caches, err := UseCache[Server](ServerStore, ServerCache)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
 	}
-
-	caches.SetReducer(func(previous []any, current api.Server) (next []any) {
-		return append(previous, current.Config())
-	})
-
 	if err = caches.Cache(server, s.key); err != nil {
 		return err
 	}
-
-	server.SetOnNewConnection(func(c *connection.Connection) {
-		c.Publish(caches.ReducerHistory())
-	})
-
 	server.ListenAndServe()
 	return nil
+}
+
+func (s *Store) Shutdown() {
+	caches, err := UseCache[Server](ServerStore, ServerCache)
+	if err != nil {
+		log.Error(err)
+	}
+	item, ok := caches.GetOne(s.key)
+	if !ok {
+		log.Error("error retrieving store server with key: ", s.key)
+	}
+	item.Data.Shutdown()
 }
 
 func NewCache[Cache any](s *Store, key CacheKey) (*cache[Cache], error) {

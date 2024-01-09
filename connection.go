@@ -1,8 +1,7 @@
-package connection
+package store
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -20,20 +19,18 @@ type (
 )
 
 func NewConnection(ctx echo.Context) (*Connection, error) {
-	// Upgrade connection to websocket
 	upgrader := websocket.Upgrader{}
 	websocket, err := upgrader.Upgrade(ctx.Response(), ctx.Request(), nil)
-
 	if err != nil {
-		log.Println("error upgrading connection: ", err.Error())
+		logger.Error("error upgrading connection: ", err.Error())
 		return nil, echo.NewHTTPError(http.StatusInternalServerError)
 	}
+
 	c := &Connection{
 		websocket: websocket,
 		Key:       uuid.New(),
 		Messages:  make(chan interface{}, 16),
 	}
-
 	return c, nil
 }
 
@@ -47,13 +44,16 @@ func (c *Connection) Close() error {
 }
 
 func (c *Connection) Listen() {
-
 	go func(c *Connection) {
 		for {
-			_, _, err := c.websocket.ReadMessage()
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
-					log.Printf("error: %v", err)
+			if _, _, err := c.websocket.ReadMessage(); err != nil {
+				if websocket.IsUnexpectedCloseError(
+					err,
+					websocket.CloseGoingAway,
+					websocket.CloseAbnormalClosure,
+					websocket.CloseNormalClosure,
+				) {
+					logger.Warn(err)
 				}
 				close(c.Messages)
 				break
@@ -64,15 +64,12 @@ func (c *Connection) Listen() {
 	for {
 		msg, ok := <-c.Messages
 		if !ok {
-			// Channel has been closed
-			fmt.Println("CLOSING")
 			c.Close()
 			break
 		}
-		log.Println("Message: ", msg)
-		err := c.websocket.WriteJSON(msg)
-		if err != nil {
-			log.Println(fmt.Errorf("error sending message: %v", err))
+
+		if err := c.websocket.WriteJSON(msg); err != nil {
+			logger.Error(err)
 			c.Close()
 		}
 	}

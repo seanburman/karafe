@@ -2,7 +2,6 @@ package store
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"sync"
 	"time"
@@ -21,9 +20,9 @@ type (
 		feed    chan map[time.Time]map[CacheKey]Item[T]
 	}
 	reducer[T any] struct {
-		reduce  *func([]ReducerData[T]) []any
-		feed    chan any
-		history map[time.Time]any
+		reduce  *func([]reducerCache[T]) []reducerCache[any]
+		history map[time.Time][]reducerCache[any]
+		feed    chan reducerFeed[any]
 	}
 	Item[T any] struct {
 		CreatedAt time.Time `json:"created_at"`
@@ -36,16 +35,21 @@ type (
 		timeout    time.Duration
 	}
 	CacheKey                  any
-	ReducerFunc[T any, U any] func(previous []U, current T) (next []U)
+	ReducerFunc[T any, U any] func(state T) (mutation U)
 	ReducerConfig[T any]      struct {
 		CreatedAt time.Time
-		Data      []ReducerData[T]
+		Data      []reducerCache[T]
 	}
-	ReducerData[T any] struct {
+	reducerCache[T any] struct {
 		Key       CacheKey  `json:"key"`
 		CreatedAt time.Time `json:"created_at"`
 		Data      T         `json:"data"`
 	}
+	reducerFeed[T any] struct {
+		CreatedAt time.Time         `json:"created_at"`
+		Cache     []reducerCache[T] `json:"cache"`
+	}
+	reducerHistory[T any] reducerFeed[T]
 )
 
 func newCache[T any]() (data *cache[T]) {
@@ -57,27 +61,27 @@ func newCache[T any]() (data *cache[T]) {
 			feed:    make(chan map[time.Time]map[CacheKey]Item[T], 1024),
 		},
 		reducer: &reducer[T]{
-			feed:    make(chan any, 1024),
-			history: make(map[time.Time]any),
+			history: make(map[time.Time][]reducerCache[any]),
+			feed:    make(chan reducerFeed[any], 1024),
 		},
 	}
 	return c
 }
 
 func (c *cache[T]) monitorChanges(setup chan bool) {
-	pcopy := c.copyRaw()
+	pRaw := c.copyRaw()
 	setup <- true
-	prev := c.reduce(pcopy)
-	c.cacheCopy(pcopy)
+	prev := c.reduce(pRaw)
+	t := time.Now()
+	c.cacheRaw(t, pRaw)
+	c.cacheReduction(t, prev)
 	for {
-		ccopy := c.copyRaw()
-		current := c.reduce(ccopy)
-		if current == nil {
-			continue
-		}
-		// Check for changes
+		raw := c.copyRaw()
+		current := c.reduce(raw)
 		if !reflect.DeepEqual(prev, current) {
-			c.cacheCopy(ccopy)
+			t := time.Now()
+			c.cacheRaw(t, raw)
+			c.cacheReduction(t, current)
 			prev = current
 		}
 	}
@@ -93,23 +97,52 @@ func (c *cache[T]) copyRaw() map[CacheKey]Item[T] {
 	return copy
 }
 
-func (c *cache[T]) cacheCopy(copy map[CacheKey]Item[T]) {
+func (c *cache[T]) cacheRaw(t time.Time, copy map[CacheKey]Item[T]) {
 	c.mu.Lock()
-	t := time.Now()
+	defer c.mu.Unlock()
 	c.raw.history[t] = copy
 	c.raw.feed <- c.raw.history
-	c.mu.Unlock()
-	go c.cacheReduction(t, c.reduce(copy))
 }
 
-func newCacheReducer[T, U any](f ReducerFunc[T, U]) func([]ReducerData[T]) []U {
-	return func(rd []ReducerData[T]) []U {
-		var u []U
-		for _, d := range rd {
-			u = f(u, d.Data)
+func newCacheReducer[T, U any](f ReducerFunc[T, U]) func([]reducerCache[T]) []reducerCache[U] {
+	return func(rdt []reducerCache[T]) []reducerCache[U] {
+		rdu := []reducerCache[U]{}
+		for _, d := range rdt {
+			rdu = append(rdu, reducerCache[U]{
+				Key:       d.Key,
+				CreatedAt: d.CreatedAt,
+				Data:      f(d.Data),
+			})
 		}
-		return u
+		return rdu
 	}
+}
+func (c *cache[T]) reduce(copy map[CacheKey]Item[T]) []reducerCache[any] {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	data := []reducerCache[T]{}
+	for key, item := range copy {
+		data = append(data, reducerCache[T]{
+			Key:       key,
+			CreatedAt: item.CreatedAt,
+			Data:      *item.Data,
+		})
+	}
+	reduce := *c.reducer.reduce
+	return reduce(data)
+}
+
+func (c *cache[T]) cacheReduction(t time.Time, r []reducerCache[any]) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reducer.history[t] = r
+	rf := reducerFeed[any]{}
+	for _, k := range r {
+		//TODO sort by createdAt
+		rf.Cache = append(rf.Cache, k)
+	}
+	c.reducer.feed <- rf
 }
 
 func (c *cache[T]) SetReducer(rf ReducerFunc[T, any]) {
@@ -124,36 +157,8 @@ func (c *cache[T]) SetReducer(rf ReducerFunc[T, any]) {
 	<-setup
 }
 
-func (c *cache[T]) DefaultReducer(previous []any, current T) (next []any) {
-	return append(previous, current)
-}
-
-func (c *cache[T]) reduce(copy map[CacheKey]Item[T]) []any {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.reducer.reduce == nil {
-		log.Printf("no reducer set for cache type: %v, setting DefaultReducer", reflect.TypeOf(*new(T)))
-		c.SetReducer(c.DefaultReducer)
-		return nil
-	}
-
-	data := []ReducerData[T]{}
-	for key, item := range copy {
-		data = append(data, ReducerData[T]{
-			Key:       key,
-			CreatedAt: item.CreatedAt,
-			Data:      *item.Data,
-		})
-	}
-	reduce := *c.reducer.reduce
-	return reduce(data)
-}
-
-func (c *cache[T]) cacheReduction(t time.Time, r []any) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.reducer.history[t] = r
-	c.reducer.feed <- r
+func (c *cache[T]) DefaultReducer(state T) (mutation any) {
+	return state
 }
 
 func (c *cache[T]) RawFeed() chan map[time.Time]map[CacheKey]Item[T] {
@@ -162,7 +167,7 @@ func (c *cache[T]) RawFeed() chan map[time.Time]map[CacheKey]Item[T] {
 	return c.raw.feed
 }
 
-func (c *cache[T]) ReducerFeed() chan any {
+func (c *cache[T]) ReducerFeed() chan reducerFeed[any] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.reducer.feed
@@ -174,10 +179,17 @@ func (c *cache[T]) RawHistory() map[time.Time]map[CacheKey]Item[T] {
 	return c.raw.history
 }
 
-func (c *cache[T]) ReducerHistory() map[time.Time]any {
+func (c *cache[T]) ReducerHistory() []reducerHistory[any] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.reducer.history
+	rh := []reducerHistory[any]{}
+	for time, cache := range c.reducer.history {
+		rh = append(rh, reducerHistory[any]{
+			CreatedAt: time,
+			Cache:     cache,
+		})
+	}
+	return rh
 }
 
 func (c *cache[T]) GetOne(key CacheKey) (*Item[T], bool) {
@@ -204,10 +216,11 @@ func (c *cache[T]) Cache(data *T, key CacheKey) error {
 	if c.raw.caches[key] != nil {
 		return fmt.Errorf("duplicate cache key: %v", key)
 	}
-	c.raw.caches[key] = &Item[T]{
+	item := &Item[T]{
 		Data:      data,
 		CreatedAt: time.Now(),
 	}
+	c.raw.caches[key] = item
 	return nil
 }
 
@@ -224,11 +237,11 @@ func (c *cache[T]) CacheWithTimeout(cfg cacheTimeoutConfig[T]) error {
 		<-timer.C
 		cache, ok := c.GetOne(cfg.key)
 		if !ok {
-			log.Panicf("could not get cache with key %v", cfg.key)
+			logger.Fatalf("could not get cache with key %v", cfg.key)
 		}
 		err := c.Delete(cfg.key)
 		if err != nil {
-			log.Panicln(err)
+			logger.Fatal(err)
 		}
 		cfg.timeoutFun(cache.Data)
 	}()
