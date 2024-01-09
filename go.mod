@@ -1,4 +1,4 @@
-module github.com/seanburman/kachekrow
+module github.com/seanburman/store
 
 go 1.21.5
 
