@@ -1,8 +1,8 @@
 package store
 
-import "embed"
+// import "embed"
 
-var (
-	//go:embed client/web-build
-	_ embed.FS
-)
+// var (
+// 	//go:embed client/web-build
+// 	_ embed.FS
+// )
